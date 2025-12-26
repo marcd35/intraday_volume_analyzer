@@ -6,6 +6,124 @@ import {
 } from '../utils/constants';
 import { parseVolumeInput, generateTimeSlots } from '../utils/formatters';
 
+// Helper function to calculate volume projection based on user inputs
+const calculateVolumeProjection = (data, avgVolume50Day, newDailyVolumeInput) => {
+  const userInputs = data.filter(point => point.userInput !== null && !point.isPreMarket && !point.isAfterMarket);
+  
+  if (userInputs.length === 0) {
+    // No user inputs - return null to indicate use expected values
+    return null;
+  }
+  
+  // Calculate cumulative actual and expected volumes up to last input
+  let cumulativeActual = 0;
+  let cumulativeExpected = 0;
+  let lastInputTime = null;
+  
+  for (const point of data) {
+    if (point.userInput !== null && !point.isPreMarket && !point.isAfterMarket) {
+      cumulativeActual += point.userInput;
+      cumulativeExpected = point.expected || 0;
+      lastInputTime = point.time;
+    } else if (point.userInput === null && !point.isPreMarket && !point.isAfterMarket && cumulativeExpected === 0) {
+      // Before any user input, accumulate expected individual volumes
+      cumulativeExpected += point.expectedIndividual || 0;
+    }
+  }
+  
+  if (cumulativeExpected <= 0) {
+    return null;
+  }
+  
+  // Check if manual daily volume is provided
+  const manualDailyVolume = newDailyVolumeInput ? parseVolumeInput(newDailyVolumeInput) : null;
+  
+  // Calculate volume ratio and projected daily volume
+  const volumeRatio = cumulativeActual / cumulativeExpected;
+  const autoProjectedDailyVolume = avgVolume50Day * volumeRatio;
+  
+  // Use manual volume if provided, otherwise use auto-calculated
+  const projectedDailyVolume = manualDailyVolume || autoProjectedDailyVolume;
+  
+  return {
+    projectedDailyVolume,
+    volumeRatio,
+    lastInputTime,
+    cumulativeActual,
+    cumulativeExpected,
+    manualDailyVolume: !!manualDailyVolume
+  };
+};
+
+// Helper function for smooth interpolation between points
+const smoothInterpolation = (data, projection, newDailyVolumeInput, avgVolume50Day) => {
+  if (!projection) {
+    // No projection needed - return data with expected values
+    return data.map(point => ({
+      ...point,
+      actual: point.expected
+    }));
+  }
+  
+  const result = [];
+  let cumulativeActual = 0;
+  let lastUserInputIndex = -1;
+  
+  // First pass: build cumulative actual up to last user input
+  for (let i = 0; i < data.length; i++) {
+    const point = data[i];
+    
+    if (point.userInput !== null && !point.isPreMarket && !point.isAfterMarket) {
+      cumulativeActual += point.userInput;
+      lastUserInputIndex = i;
+    } else if (point.userInput === null && !point.isPreMarket && !point.isAfterMarket && lastUserInputIndex === -1) {
+      // Before any user input, use expected individual volumes
+      cumulativeActual += point.expectedIndividual || 0;
+    }
+    
+    result.push({
+      ...point,
+      cumulativeActual: cumulativeActual
+    });
+  }
+  
+  // Second pass: apply smoothing and projection
+  const finalResult = [];
+  for (let i = 0; i < result.length; i++) {
+    const point = result[i];
+    let actualValue = null;
+    
+    if (point.isPreMarket || point.isAfterMarket) {
+      actualValue = null;
+    } else if (i <= lastUserInputIndex) {
+      // Up to and including last user input - use actual cumulative
+      actualValue = Math.round(point.cumulativeActual);
+    } else {
+      // After last user input - apply smooth projection
+      const expectedPctAtThisTime = point.expected ? point.expected / avgVolume50Day : 0;
+      const projectedValue = projection.projectedDailyVolume * expectedPctAtThisTime;
+      
+      // Apply smoothing factor based on distance from last input
+      const distanceFromLastInput = i - lastUserInputIndex;
+      const smoothingFactor = Math.min(distanceFromLastInput / 12, 1); // Smooth over ~1 hour
+      
+      // Blend between last actual value and projected value
+      const lastActualValue = result[lastUserInputIndex]?.cumulativeActual || 0;
+      actualValue = Math.round(lastActualValue + (projectedValue - lastActualValue) * smoothingFactor);
+    }
+    
+    finalResult.push({
+      time: point.time,
+      expected: point.expected,
+      actual: actualValue,
+      isPreMarket: point.isPreMarket,
+      isAfterMarket: point.isAfterMarket,
+    });
+  }
+  
+  return finalResult;
+};
+
 export const useVolumeCalculations = ({
   activeTab,
   ticker,
@@ -13,6 +131,7 @@ export const useVolumeCalculations = ({
   currentVolume,
   currentTime,
   granularData,
+  newDailyVolumeInput,
 }) => {
   const [chartData, setChartData] = useState([]);
   const timeSlots = useMemo(() => generateTimeSlots(), []);
@@ -151,33 +270,28 @@ export const useVolumeCalculations = ({
 
       setChartData(data);
     } else {
-      // Advanced mode chart generation
+      // Advanced mode chart generation with smooth interpolation
+      // Step 1: Build data structure with expected and user input values
       const data = timeSlots.map(slot => {
-        const expected = getExpectedVolumeAtTime(slot.time);
+        const expectedCumulative = getExpectedVolumeAtTime(slot.time);
+        const expectedIndividual = getIndividualVolumeAtTime(slot.time);
         const inputValue = granularData[slot.time];
         const parsedValue = inputValue ? parseVolumeInput(inputValue) : null;
 
         return {
           time: slot.time,
-          expected: expected ? Math.round(expected) : null,
-          actual: parsedValue,
+          expected: expectedCumulative ? Math.round(expectedCumulative) : null,
+          expectedIndividual: expectedIndividual ? Math.round(expectedIndividual) : null,
+          userInput: parsedValue,
           isPreMarket: slot.isPreMarket,
           isAfterMarket: slot.isAfterMarket,
         };
       });
 
-      // Calculate cumulative volumes where we have actual data
-      let cumulativeActual = 0;
-      const processedData = data.map(point => {
-        if (point.actual !== null) {
-          cumulativeActual = point.actual;
-        }
-        return {
-          ...point,
-          actual: cumulativeActual > 0 ? cumulativeActual : null,
-        };
-      });
-
+      // Step 2: Calculate volume projection and apply smooth interpolation
+      const projection = calculateVolumeProjection(data, avgVolume50Day, newDailyVolumeInput);
+      const processedData = smoothInterpolation(data, projection, newDailyVolumeInput, avgVolume50Day);
+      
       setChartData(processedData);
     }
   }, [

@@ -25,6 +25,23 @@ export const formatVolume = vol => {
   return vol.toString();
 };
 
+export const getMarketStatus = currentTime => {
+  const hour = currentTime.getHours();
+  const minute = currentTime.getMinutes();
+  
+  // NYSE trading hours: 9:30 AM - 4:00 PM ET
+  const isMarketOpen = (hour > 9 || (hour === 9 && minute >= 30)) && hour < 16;
+  const isPreMarket = hour < 9 || (hour === 9 && minute < 30);
+  const isAfterMarket = hour >= 16;
+  
+  return {
+    isMarketOpen,
+    isPreMarket,
+    isAfterMarket,
+    status: isMarketOpen ? 'open' : isPreMarket ? 'pre-market' : 'after-hours'
+  };
+};
+
 export const generateTimeSlots = () => {
   const slots = [];
   for (let hour = 8; hour <= 16; hour++) {

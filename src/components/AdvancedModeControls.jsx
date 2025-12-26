@@ -13,6 +13,8 @@ const AdvancedModeControls = ({
   handleGranularChange,
   getExpectedVolumeAtTime,
   getIndividualVolumeAtTime,
+  newDailyVolumeInput,
+  handleNewDailyVolumeChange,
 }) => {
   // Determine market session
   const getMarketSession = () => {
@@ -42,7 +44,7 @@ const AdvancedModeControls = ({
   };
 
   const marketSession = getMarketSession();
-  // Group time slots by hour
+  // Group time slots by hour for display
   const groupedSlots = {};
   timeSlots.forEach(slot => {
     const hour = slot.time.split(':')[0];
@@ -54,7 +56,7 @@ const AdvancedModeControls = ({
 
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Stock Ticker
@@ -78,6 +80,19 @@ const AdvancedModeControls = ({
             onChange={e => handleAvgVolumeChange(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             placeholder="50m or 50000000"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            New Daily Volume
+          </label>
+          <input
+            type="text"
+            value={newDailyVolumeInput}
+            onChange={e => handleNewDailyVolumeChange(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Projected daily volume"
           />
         </div>
 
@@ -108,9 +123,10 @@ const AdvancedModeControls = ({
 
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
         <p className="text-sm text-amber-800">
-          <strong>Advanced Mode:</strong> Enter individual volume for each
-          5-minute interval. Leave blank to use expected values. Pre-market
-          (gray) and after-hours (gray) data is for reference only.
+          <strong>Advanced Mode:</strong> Enter the <strong>individual volume</strong> for each
+          5-minute interval (not cumulative). The graph will automatically project the full-day
+          volume based on your inputs and smooth the projection. Leave blank to use expected values.
+          Pre-market (gray) and after-hours (gray) data is for reference only.
         </p>
       </div>
 

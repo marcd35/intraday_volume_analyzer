@@ -12,6 +12,7 @@ function App() {
   const [ticker, setTicker] = useState('AAPL');
   const [avgVolumeInput, setAvgVolumeInput] = useState('50m');
   const [currentVolumeInput, setCurrentVolumeInput] = useState('');
+  const [newDailyVolumeInput, setNewDailyVolumeInput] = useState('');
   const [granularData, setGranularData] = useState({});
 
   const currentTime = useMarketTime();
@@ -31,6 +32,7 @@ function App() {
     currentVolume,
     currentTime,
     granularData,
+    newDailyVolumeInput,
   });
 
   const handleAvgVolumeChange = value => {
@@ -39,6 +41,10 @@ function App() {
 
   const handleCurrentVolumeChange = value => {
     setCurrentVolumeInput(value);
+  };
+
+  const handleNewDailyVolumeChange = value => {
+    setNewDailyVolumeInput(value);
   };
 
   const handleGranularChange = (time, value) => {
@@ -113,15 +119,18 @@ function App() {
               handleGranularChange={handleGranularChange}
               getExpectedVolumeAtTime={getExpectedVolumeAtTime}
               getIndividualVolumeAtTime={getIndividualVolumeAtTime}
+              newDailyVolumeInput={newDailyVolumeInput}
+              handleNewDailyVolumeChange={handleNewDailyVolumeChange}
             />
           )}
         </div>
 
-        {activeTab === 'simple' && currentVolume > 0 && (
+        {currentVolume > 0 && (
           <VolumeStatus
-            volumeStatus={volumeStatus}
             currentVolume={currentVolume}
             expectedVolume={expectedVolume}
+            ticker={ticker}
+            currentTime={currentTime}
           />
         )}
 

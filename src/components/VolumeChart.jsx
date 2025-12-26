@@ -26,7 +26,15 @@ const VolumeChart = ({ data, activeTab }) => {
             angle={-45}
             textAnchor="end"
             height={80}
-            interval={activeTab === 'advanced' ? 11 : 0}
+            tickFormatter={(value, index) => {
+              // Show labels only at 30-minute intervals in advanced mode
+              if (activeTab === 'advanced') {
+                const timeParts = value.split(':');
+                const minutes = parseInt(timeParts[1]);
+                return minutes % 30 === 0 ? value : '';
+              }
+              return value;
+            }}
           />
           <YAxis
             tickFormatter={formatVolume}
