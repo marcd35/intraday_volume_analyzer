@@ -29,7 +29,7 @@ export const generateTimeSlots = () => {
   const slots = [];
   for (let hour = 8; hour <= 16; hour++) {
     for (let min = 0; min < 60; min += 5) {
-      if (hour === 16 && min > 0) break; // Stop at 16:00
+      if (hour === 16 && min > 55) break; // Stop after 16:55
       const timeStr = `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
       slots.push({
         time: timeStr,

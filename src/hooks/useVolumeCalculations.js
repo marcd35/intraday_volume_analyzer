@@ -120,20 +120,26 @@ export const useVolumeCalculations = ({
 
         let actualVolume = null;
 
-        if (
-          currentMinutes >= MARKET_OPEN_MINUTES &&
-          currentMinutes <= MARKET_CLOSE_MINUTES
-        ) {
-          if (pointMinutes <= currentMinutes) {
-            const currentPct =
+        // Calculate actual volume if we have currentVolume
+        if (currentVolume > 0) {
+          // Determine the current percentage based on time
+          let currentPct = 1.0; // Default to 100% (after market close)
+          
+          if (currentMinutes >= MARKET_OPEN_MINUTES && currentMinutes <= MARKET_CLOSE_MINUTES) {
+            // During market hours, find the appropriate percentage
+            currentPct =
               VOLUME_DISTRIBUTION.find(p => {
                 const [ph, pm] = p.time.split(':').map(Number);
                 const pMinutes = ph * 60 + pm;
                 return pMinutes >= currentMinutes;
               })?.pct || 1.0;
-
-            actualVolume = (currentVolume / currentPct) * point.pct;
+          } else if (currentMinutes < MARKET_OPEN_MINUTES) {
+            // Before market open, use the first percentage point
+            currentPct = VOLUME_DISTRIBUTION[0].pct;
           }
+          
+          // Project the volume for this point
+          actualVolume = (currentVolume / currentPct) * point.pct;
         }
 
         return {
@@ -180,6 +186,7 @@ export const useVolumeCalculations = ({
     currentVolume,
     activeTab,
     granularData,
+    timeSlots,
     ticker,
   ]);
 
