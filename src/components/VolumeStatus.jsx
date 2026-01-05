@@ -1,7 +1,12 @@
 import React from 'react';
 import { formatVolume } from '../utils/formatters';
 
-const VolumeStatus = ({ currentVolume, expectedVolume, ticker, currentTime }) => {
+const VolumeStatus = ({
+  currentVolume,
+  expectedVolume,
+  ticker,
+  currentTime,
+}) => {
   const getVolumeStatus = () => {
     if (currentVolume === 0)
       return { text: 'Enter current volume', color: 'text-gray-500' };

@@ -20,24 +20,24 @@ export const VOLUME_DISTRIBUTION = [
 // Volume ramps up as market open approaches
 // These are CUMULATIVE percentages of the expected 50-day avg volume
 export const PREMARKET_DISTRIBUTION = {
-  '08:00': 0.001,  // 0.1% - very low early premarket
+  '08:00': 0.001, // 0.1% - very low early premarket
   '08:05': 0.0015,
   '08:10': 0.002,
   '08:15': 0.0025,
   '08:20': 0.003,
   '08:25': 0.0035,
-  '08:30': 0.005,  // 0.5% - picks up at 8:30
+  '08:30': 0.005, // 0.5% - picks up at 8:30
   '08:35': 0.006,
   '08:40': 0.007,
   '08:45': 0.008,
   '08:50': 0.009,
   '08:55': 0.01,
-  '09:00': 0.012,  // 1.2% - more activity as open approaches
+  '09:00': 0.012, // 1.2% - more activity as open approaches
   '09:05': 0.014,
   '09:10': 0.016,
   '09:15': 0.018,
   '09:20': 0.02,
-  '09:25': 0.022,  // ~2.2% cumulative by 9:25
+  '09:25': 0.022, // ~2.2% cumulative by 9:25
 };
 
 export const MARKET_OPEN_MINUTES = 9 * 60 + 30; // 9:30 AM

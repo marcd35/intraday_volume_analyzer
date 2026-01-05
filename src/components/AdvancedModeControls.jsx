@@ -45,12 +45,15 @@ const AdvancedModeControls = ({
   };
 
   const marketSession = getMarketSession();
-  
+
   // Check if prerequisites are met for granular inputs
   const hasValidTicker = ticker && ticker.trim().length > 0;
-  const hasValidAvgVolume = avgVolumeInput && parseVolumeInput(avgVolumeInput) > 0;
-  const hasValidDailyVolume = newDailyVolumeInput && parseVolumeInput(newDailyVolumeInput) > 0;
-  const prerequisitesMet = hasValidTicker && hasValidAvgVolume && hasValidDailyVolume;
+  const hasValidAvgVolume =
+    avgVolumeInput && parseVolumeInput(avgVolumeInput) > 0;
+  const hasValidDailyVolume =
+    newDailyVolumeInput && parseVolumeInput(newDailyVolumeInput) > 0;
+  const prerequisitesMet =
+    hasValidTicker && hasValidAvgVolume && hasValidDailyVolume;
 
   // Group time slots by hour for display
   const groupedSlots = {};
@@ -131,11 +134,18 @@ const AdvancedModeControls = ({
 
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
         <p className="text-sm text-amber-800">
-          <strong>How to use Advanced Mode:</strong><br />
-          1. Enter the <strong>50-Day Avg Volume</strong> (e.g., &quot;50m&quot;)<br />
-          2. Enter the <strong>New Daily Volume</strong> - the current cumulative volume from your chart (e.g., &quot;10m&quot; at 11am)<br />
-          3. The graph will project actual volume (green) vs expected (blue)<br />
-          4. Optionally, use the time inputs below to override specific intervals with cumulative values
+          <strong>How to use Advanced Mode:</strong>
+          <br />
+          1. Enter the <strong>50-Day Avg Volume</strong> (e.g.,
+          &quot;50m&quot;)
+          <br />
+          2. Enter the <strong>New Daily Volume</strong> - the current
+          cumulative volume from your chart (e.g., &quot;10m&quot; at 11am)
+          <br />
+          3. The graph will project actual volume (green) vs expected (blue)
+          <br />
+          4. Optionally, use the time inputs below to override specific
+          intervals with cumulative values
         </p>
       </div>
 
@@ -194,17 +204,25 @@ const AdvancedModeControls = ({
                       {groupedSlots[hour].map(slot => {
                         let placeholder = '';
                         const avgVolume = parseVolumeInput(avgVolumeInput) || 0;
-                        
+
                         if (slot.isPreMarket && avgVolume > 0) {
                           // Use premarket distribution for placeholder
-                          const premarketPct = PREMARKET_DISTRIBUTION[slot.time];
+                          const premarketPct =
+                            PREMARKET_DISTRIBUTION[slot.time];
                           if (premarketPct) {
                             // Calculate individual bar volume (difference from previous)
-                            const times = Object.keys(PREMARKET_DISTRIBUTION).sort();
+                            const times = Object.keys(
+                              PREMARKET_DISTRIBUTION
+                            ).sort();
                             const idx = times.indexOf(slot.time);
-                            const prevPct = idx > 0 ? PREMARKET_DISTRIBUTION[times[idx - 1]] : 0;
+                            const prevPct =
+                              idx > 0
+                                ? PREMARKET_DISTRIBUTION[times[idx - 1]]
+                                : 0;
                             const individualPct = premarketPct - prevPct;
-                            placeholder = formatVolume(avgVolume * individualPct);
+                            placeholder = formatVolume(
+                              avgVolume * individualPct
+                            );
                           }
                         } else {
                           const expected = getIndividualVolumeAtTime(slot.time);

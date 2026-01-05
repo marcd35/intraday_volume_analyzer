@@ -89,9 +89,7 @@ const SimpleModeControls = ({
         >
           <div className="flex items-center">
             <Clock className={`w-5 h-5 mr-2 ${marketSession.color}`} />
-            <span
-              className={`font-mono font-semibold ${marketSession.color}`}
-            >
+            <span className={`font-mono font-semibold ${marketSession.color}`}>
               {currentTime.toLocaleTimeString('en-US', {
                 hour: '2-digit',
                 minute: '2-digit',

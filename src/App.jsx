@@ -136,7 +136,11 @@ function App() {
 
         {chartData.length > 0 && (
           <div className="bg-white rounded-xl shadow-xl p-6">
-            <VolumeChart data={chartData} ticker={ticker} activeTab={activeTab} />
+            <VolumeChart
+              data={chartData}
+              ticker={ticker}
+              activeTab={activeTab}
+            />
           </div>
         )}
       </div>

@@ -15,7 +15,7 @@ const VolumeChart = ({ data, activeTab }) => {
   // Transform data to separate premarket and market values for different line styles
   const transformedData = useMemo(() => {
     if (activeTab !== 'advanced') return data;
-    
+
     return data.map((point, index) => {
       const isPreMarket = point.isPreMarket;
       // Check if this is the first market hours point (9:30)
@@ -23,8 +23,9 @@ const VolumeChart = ({ data, activeTab }) => {
       const isFirstMarket = !isPreMarket && prevPoint?.isPreMarket;
       // Check if this is the last premarket point (9:25)
       const nextPoint = data[index + 1];
-      const isLastPremarket = isPreMarket && nextPoint && !nextPoint.isPreMarket;
-      
+      const isLastPremarket =
+        isPreMarket && nextPoint && !nextPoint.isPreMarket;
+
       return {
         ...point,
         // Premarket values - show for premarket times AND the first market point (to connect)
@@ -63,9 +64,7 @@ const VolumeChart = ({ data, activeTab }) => {
               return value;
             }}
           />
-          <YAxis
-            tickFormatter={formatVolume}
-          />
+          <YAxis tickFormatter={formatVolume} />
           <Tooltip
             formatter={value => (value ? formatVolume(value) : 'N/A')}
             labelStyle={{ color: '#000' }}
@@ -162,8 +161,9 @@ const VolumeChart = ({ data, activeTab }) => {
               patterns.
             </p>
             <p>
-              <strong>Dotted lines</strong> represent pre-market (8:00-9:25 AM) trading.{' '}
-              <strong>Solid lines</strong> represent regular market hours (9:30 AM - 4:00 PM).
+              <strong>Dotted lines</strong> represent pre-market (8:00-9:25 AM)
+              trading. <strong>Solid lines</strong> represent regular market
+              hours (9:30 AM - 4:00 PM).
             </p>
           </>
         )}
