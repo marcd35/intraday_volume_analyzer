@@ -1,128 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   VOLUME_DISTRIBUTION,
+  PREMARKET_DISTRIBUTION,
   MARKET_OPEN_MINUTES,
   MARKET_CLOSE_MINUTES,
 } from '../utils/constants';
 import { parseVolumeInput, generateTimeSlots } from '../utils/formatters';
-
-// Helper function to calculate volume projection based on user inputs
-const calculateVolumeProjection = (data, avgVolume50Day, newDailyVolumeInput) => {
-  const userInputs = data.filter(point => point.userInput !== null && !point.isPreMarket && !point.isAfterMarket);
-  
-  if (userInputs.length === 0) {
-    // No user inputs - return null to indicate use expected values
-    return null;
-  }
-  
-  // Calculate cumulative actual and expected volumes up to last input
-  let cumulativeActual = 0;
-  let cumulativeExpected = 0;
-  let lastInputTime = null;
-  
-  for (const point of data) {
-    if (point.userInput !== null && !point.isPreMarket && !point.isAfterMarket) {
-      cumulativeActual += point.userInput;
-      cumulativeExpected = point.expected || 0;
-      lastInputTime = point.time;
-    } else if (point.userInput === null && !point.isPreMarket && !point.isAfterMarket && cumulativeExpected === 0) {
-      // Before any user input, accumulate expected individual volumes
-      cumulativeExpected += point.expectedIndividual || 0;
-    }
-  }
-  
-  if (cumulativeExpected <= 0) {
-    return null;
-  }
-  
-  // Check if manual daily volume is provided
-  const manualDailyVolume = newDailyVolumeInput ? parseVolumeInput(newDailyVolumeInput) : null;
-  
-  // Calculate volume ratio and projected daily volume
-  const volumeRatio = cumulativeActual / cumulativeExpected;
-  const autoProjectedDailyVolume = avgVolume50Day * volumeRatio;
-  
-  // Use manual volume if provided, otherwise use auto-calculated
-  const projectedDailyVolume = manualDailyVolume || autoProjectedDailyVolume;
-  
-  return {
-    projectedDailyVolume,
-    volumeRatio,
-    lastInputTime,
-    cumulativeActual,
-    cumulativeExpected,
-    manualDailyVolume: !!manualDailyVolume
-  };
-};
-
-// Helper function for smooth interpolation between points
-const smoothInterpolation = (data, projection, newDailyVolumeInput, avgVolume50Day) => {
-  if (!projection) {
-    // No projection needed - return data with expected values
-    return data.map(point => ({
-      ...point,
-      actual: point.expected
-    }));
-  }
-  
-  const result = [];
-  let cumulativeActual = 0;
-  let lastUserInputIndex = -1;
-  
-  // First pass: build cumulative actual up to last user input
-  for (let i = 0; i < data.length; i++) {
-    const point = data[i];
-    
-    if (point.userInput !== null && !point.isPreMarket && !point.isAfterMarket) {
-      cumulativeActual += point.userInput;
-      lastUserInputIndex = i;
-    } else if (point.userInput === null && !point.isPreMarket && !point.isAfterMarket && lastUserInputIndex === -1) {
-      // Before any user input, use expected individual volumes
-      cumulativeActual += point.expectedIndividual || 0;
-    }
-    
-    result.push({
-      ...point,
-      cumulativeActual: cumulativeActual
-    });
-  }
-  
-  // Second pass: apply smoothing and projection
-  const finalResult = [];
-  for (let i = 0; i < result.length; i++) {
-    const point = result[i];
-    let actualValue = null;
-    
-    if (point.isPreMarket || point.isAfterMarket) {
-      actualValue = null;
-    } else if (i <= lastUserInputIndex) {
-      // Up to and including last user input - use actual cumulative
-      actualValue = Math.round(point.cumulativeActual);
-    } else {
-      // After last user input - apply smooth projection
-      const expectedPctAtThisTime = point.expected ? point.expected / avgVolume50Day : 0;
-      const projectedValue = projection.projectedDailyVolume * expectedPctAtThisTime;
-      
-      // Apply smoothing factor based on distance from last input
-      const distanceFromLastInput = i - lastUserInputIndex;
-      const smoothingFactor = Math.min(distanceFromLastInput / 12, 1); // Smooth over ~1 hour
-      
-      // Blend between last actual value and projected value
-      const lastActualValue = result[lastUserInputIndex]?.cumulativeActual || 0;
-      actualValue = Math.round(lastActualValue + (projectedValue - lastActualValue) * smoothingFactor);
-    }
-    
-    finalResult.push({
-      time: point.time,
-      expected: point.expected,
-      actual: actualValue,
-      isPreMarket: point.isPreMarket,
-      isAfterMarket: point.isAfterMarket,
-    });
-  }
-  
-  return finalResult;
-};
 
 export const useVolumeCalculations = ({
   activeTab,
@@ -270,29 +153,244 @@ export const useVolumeCalculations = ({
 
       setChartData(data);
     } else {
-      // Advanced mode chart generation with smooth interpolation
-      // Step 1: Build data structure with expected and user input values
-      const data = timeSlots.map(slot => {
-        const expectedCumulative = getExpectedVolumeAtTime(slot.time);
-        const expectedIndividual = getIndividualVolumeAtTime(slot.time);
-        const inputValue = granularData[slot.time];
-        const parsedValue = inputValue ? parseVolumeInput(inputValue) : null;
-
-        return {
+      // Advanced mode chart generation
+      // Step 1: Parse the current daily volume (cumulative volume at current time)
+      const currentDailyVolume = newDailyVolumeInput ? parseVolumeInput(newDailyVolumeInput) : 0;
+      
+      const hours = currentTime.getHours();
+      const minutes = currentTime.getMinutes();
+      const currentMinutes = hours * 60 + minutes;
+      
+      // Step 2: Find the current time's expected percentage for projection
+      let currentExpectedPct = 1.0;
+      if (currentMinutes >= MARKET_OPEN_MINUTES && currentMinutes <= MARKET_CLOSE_MINUTES) {
+        for (let i = 0; i < VOLUME_DISTRIBUTION.length; i++) {
+          const [h, m] = VOLUME_DISTRIBUTION[i].time.split(':').map(Number);
+          const pointMinutes = h * 60 + m;
+          
+          if (pointMinutes >= currentMinutes) {
+            if (i === 0) {
+              currentExpectedPct = VOLUME_DISTRIBUTION[i].pct;
+            } else {
+              const [prevH, prevM] = VOLUME_DISTRIBUTION[i - 1].time.split(':').map(Number);
+              const prevMinutes = prevH * 60 + prevM;
+              const ratio = (currentMinutes - prevMinutes) / (pointMinutes - prevMinutes);
+              currentExpectedPct = VOLUME_DISTRIBUTION[i - 1].pct + 
+                (VOLUME_DISTRIBUTION[i].pct - VOLUME_DISTRIBUTION[i - 1].pct) * ratio;
+            }
+            break;
+          }
+        }
+      } else if (currentMinutes < MARKET_OPEN_MINUTES) {
+        currentExpectedPct = VOLUME_DISTRIBUTION[0].pct;
+      }
+      
+      // Step 3: Calculate projected end-of-day volume (baseline)
+      const baselineProjectedDaily = currentExpectedPct > 0 ? currentDailyVolume / currentExpectedPct : 0;
+      
+      // Step 4: Build individual volumes for each time slot
+      // These are the 5-minute bar volumes that when summed give cumulative
+      const individualVolumes = [];
+      let prevExpectedCumulative = 0;
+      
+      for (const slot of timeSlots) {
+        const [slotH, slotM] = slot.time.split(':').map(Number);
+        const slotMinutes = slotH * 60 + slotM;
+        
+        if (slot.isPreMarket) {
+          // Calculate premarket expected volume using PREMARKET_DISTRIBUTION
+          const premarketPct = PREMARKET_DISTRIBUTION[slot.time];
+          if (premarketPct) {
+            const expectedCumulative = avgVolume50Day * premarketPct;
+            // Calculate individual volume for this 5-min bar
+            const times = Object.keys(PREMARKET_DISTRIBUTION).sort();
+            const idx = times.indexOf(slot.time);
+            const prevPct = idx > 0 ? PREMARKET_DISTRIBUTION[times[idx - 1]] : 0;
+            const expectedIndividual = avgVolume50Day * (premarketPct - prevPct);
+            
+            // For premarket projected: use same ratio as market hours baseline
+            let projectedIndividual = 0;
+            if (avgVolume50Day > 0 && expectedIndividual > 0) {
+              projectedIndividual = (baselineProjectedDaily / avgVolume50Day) * expectedIndividual;
+            }
+            
+            // Check for user override
+            const granularValue = granularData[slot.time];
+            const actualIndividual = granularValue ? parseVolumeInput(granularValue) : projectedIndividual;
+            
+            individualVolumes.push({
+              time: slot.time,
+              expectedIndividual: Math.round(expectedIndividual),
+              projectedIndividual: Math.round(projectedIndividual),
+              actualIndividual: Math.round(actualIndividual),
+              hasOverride: !!granularValue,
+              isPreMarket: true,
+              isAfterMarket: false,
+            });
+          } else {
+            individualVolumes.push({ time: slot.time, individual: null, isPreMarket: slot.isPreMarket, isAfterMarket: slot.isAfterMarket });
+          }
+          continue;
+        }
+        
+        if (slot.isAfterMarket) {
+          individualVolumes.push({ time: slot.time, individual: null, isPreMarket: slot.isPreMarket, isAfterMarket: slot.isAfterMarket });
+          continue;
+        }
+        
+        const expectedCumulative = getExpectedVolumeAtTime(slot.time) || 0;
+        const expectedIndividual = expectedCumulative - prevExpectedCumulative;
+        prevExpectedCumulative = expectedCumulative;
+        
+        // Calculate the projected individual volume based on baselineProjectedDaily
+        // Use the ratio: (projected / expected) * expectedIndividual
+        let projectedIndividual = 0;
+        if (avgVolume50Day > 0 && expectedIndividual > 0) {
+          projectedIndividual = (baselineProjectedDaily / avgVolume50Day) * expectedIndividual;
+        }
+        
+        // Check if user has overridden this specific slot (with individual volume)
+        const granularValue = granularData[slot.time];
+        const actualIndividual = granularValue ? parseVolumeInput(granularValue) : projectedIndividual;
+        
+        individualVolumes.push({
           time: slot.time,
-          expected: expectedCumulative ? Math.round(expectedCumulative) : null,
-          expectedIndividual: expectedIndividual ? Math.round(expectedIndividual) : null,
-          userInput: parsedValue,
+          expectedIndividual: Math.round(expectedIndividual),
+          projectedIndividual: Math.round(projectedIndividual),
+          actualIndividual: Math.round(actualIndividual),
+          hasOverride: !!granularValue,
           isPreMarket: slot.isPreMarket,
           isAfterMarket: slot.isAfterMarket,
-        };
-      });
-
-      // Step 2: Calculate volume projection and apply smooth interpolation
-      const projection = calculateVolumeProjection(data, avgVolume50Day, newDailyVolumeInput);
-      const processedData = smoothInterpolation(data, projection, newDailyVolumeInput, avgVolume50Day);
+        });
+      }
       
-      setChartData(processedData);
+      // Step 5: Calculate cumulative actual by summing individual volumes
+      // Also recalculate projection after any overrides
+      let cumulativeActual = 0;
+      let lastOverrideIndex = -1;
+      
+      // First pass: find the last override and sum up to that point
+      for (let i = 0; i < individualVolumes.length; i++) {
+        const vol = individualVolumes[i];
+        if (vol.hasOverride) {
+          lastOverrideIndex = i;
+        }
+      }
+      
+      // Calculate new projected daily if there are overrides
+      let adjustedProjectedDaily = baselineProjectedDaily;
+      if (lastOverrideIndex >= 0) {
+        // Sum up all individual volumes up to and including last override
+        let sumActual = 0;
+        let expectedAtLastOverride = 0;
+        for (let i = 0; i <= lastOverrideIndex; i++) {
+          const vol = individualVolumes[i];
+          if (vol.actualIndividual !== null && !isNaN(vol.actualIndividual)) {
+            sumActual += vol.actualIndividual;
+          }
+        }
+        // Get expected cumulative at last override time
+        const lastOverrideSlot = individualVolumes[lastOverrideIndex];
+        expectedAtLastOverride = getExpectedVolumeAtTime(lastOverrideSlot.time) || 0;
+        
+        // Calculate new projection ratio
+        if (expectedAtLastOverride > 0) {
+          adjustedProjectedDaily = (sumActual / expectedAtLastOverride) * avgVolume50Day;
+        }
+      }
+      
+      // Step 6: Build final chart data with cumulative values
+      const data = [];
+      cumulativeActual = 0;
+      let cumulativeExpected = 0;
+      
+      for (let i = 0; i < individualVolumes.length; i++) {
+        const vol = individualVolumes[i];
+        const slot = timeSlots[i];
+        
+        if (vol.isPreMarket) {
+          // Handle premarket data points
+          const premarketPct = PREMARKET_DISTRIBUTION[vol.time];
+          if (premarketPct && vol.expectedIndividual !== undefined) {
+            const expectedCumulative = avgVolume50Day * premarketPct;
+            
+            // Calculate individual volume to add for this slot
+            let individualToAdd = 0;
+            
+            if (lastOverrideIndex === -1) {
+              individualToAdd = vol.projectedIndividual || 0;
+            } else if (i <= lastOverrideIndex) {
+              individualToAdd = vol.actualIndividual || 0;
+            } else {
+              if (avgVolume50Day > 0 && vol.expectedIndividual > 0) {
+                individualToAdd = (adjustedProjectedDaily / avgVolume50Day) * vol.expectedIndividual;
+              }
+            }
+            
+            cumulativeActual += individualToAdd;
+            cumulativeExpected = expectedCumulative;
+            
+            data.push({
+              time: vol.time,
+              expected: Math.round(expectedCumulative),
+              actual: currentDailyVolume > 0 ? Math.round(cumulativeActual) : null,
+              isPreMarket: true,
+              isAfterMarket: false,
+            });
+          } else {
+            data.push({
+              time: vol.time,
+              expected: null,
+              actual: null,
+              isPreMarket: vol.isPreMarket,
+              isAfterMarket: vol.isAfterMarket,
+            });
+          }
+          continue;
+        }
+        
+        if (vol.isAfterMarket) {
+          data.push({
+            time: vol.time,
+            expected: null,
+            actual: null,
+            isPreMarket: vol.isPreMarket,
+            isAfterMarket: vol.isAfterMarket,
+          });
+          continue;
+        }
+        
+        const expectedCumulative = getExpectedVolumeAtTime(vol.time);
+        cumulativeExpected = expectedCumulative || 0;
+        
+        // Calculate individual volume to add for this slot
+        let individualToAdd = 0;
+        
+        if (lastOverrideIndex === -1) {
+          // No overrides at all - use the baseline projected individual
+          individualToAdd = vol.projectedIndividual || 0;
+        } else if (i <= lastOverrideIndex) {
+          // Up to and including last override - use actual individual (which includes overrides)
+          individualToAdd = vol.actualIndividual || 0;
+        } else {
+          // After last override: project based on adjusted ratio
+          if (avgVolume50Day > 0 && vol.expectedIndividual > 0) {
+            individualToAdd = (adjustedProjectedDaily / avgVolume50Day) * vol.expectedIndividual;
+          }
+        }
+        
+        cumulativeActual += individualToAdd;
+        
+        data.push({
+          time: vol.time,
+          expected: Math.round(cumulativeExpected),
+          actual: currentDailyVolume > 0 ? Math.round(cumulativeActual) : null,
+          isPreMarket: vol.isPreMarket,
+          isAfterMarket: vol.isAfterMarket,
+        });
+      }
+      
+      setChartData(data);
     }
   }, [
     currentTime,
@@ -302,7 +400,48 @@ export const useVolumeCalculations = ({
     granularData,
     timeSlots,
     ticker,
+    newDailyVolumeInput,
   ]);
+
+  // Helper to get projected individual volume for a slot (for pre-filling inputs)
+  const getProjectedIndividualAtTime = (timeStr) => {
+    const currentDailyVolume = newDailyVolumeInput ? parseVolumeInput(newDailyVolumeInput) : 0;
+    if (currentDailyVolume <= 0) return null;
+    
+    const hours = currentTime.getHours();
+    const minutes = currentTime.getMinutes();
+    const currentMinutes = hours * 60 + minutes;
+    
+    // Find current time's expected percentage
+    let currentExpectedPct = 1.0;
+    if (currentMinutes >= MARKET_OPEN_MINUTES && currentMinutes <= MARKET_CLOSE_MINUTES) {
+      for (let i = 0; i < VOLUME_DISTRIBUTION.length; i++) {
+        const [h, m] = VOLUME_DISTRIBUTION[i].time.split(':').map(Number);
+        const pointMinutes = h * 60 + m;
+        
+        if (pointMinutes >= currentMinutes) {
+          if (i === 0) {
+            currentExpectedPct = VOLUME_DISTRIBUTION[i].pct;
+          } else {
+            const [prevH, prevM] = VOLUME_DISTRIBUTION[i - 1].time.split(':').map(Number);
+            const prevMinutes = prevH * 60 + prevM;
+            const ratio = (currentMinutes - prevMinutes) / (pointMinutes - prevMinutes);
+            currentExpectedPct = VOLUME_DISTRIBUTION[i - 1].pct + 
+              (VOLUME_DISTRIBUTION[i].pct - VOLUME_DISTRIBUTION[i - 1].pct) * ratio;
+          }
+          break;
+        }
+      }
+    }
+    
+    const baselineProjectedDaily = currentExpectedPct > 0 ? currentDailyVolume / currentExpectedPct : 0;
+    const expectedIndividual = getIndividualVolumeAtTime(timeStr);
+    
+    if (expectedIndividual && avgVolume50Day > 0) {
+      return Math.round((baselineProjectedDaily / avgVolume50Day) * expectedIndividual);
+    }
+    return null;
+  };
 
   return {
     chartData,
@@ -310,5 +449,6 @@ export const useVolumeCalculations = ({
     timeSlots,
     getExpectedVolumeAtTime,
     getIndividualVolumeAtTime,
+    getProjectedIndividualAtTime,
   };
 };

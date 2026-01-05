@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   LineChart,
   Line,
@@ -12,20 +12,47 @@ import {
 import { formatVolume } from '../utils/formatters';
 
 const VolumeChart = ({ data, activeTab }) => {
+  // Transform data to separate premarket and market values for different line styles
+  const transformedData = useMemo(() => {
+    if (activeTab !== 'advanced') return data;
+    
+    return data.map((point, index) => {
+      const isPreMarket = point.isPreMarket;
+      // Check if this is the first market hours point (9:30)
+      const prevPoint = index > 0 ? data[index - 1] : null;
+      const isFirstMarket = !isPreMarket && prevPoint?.isPreMarket;
+      // Check if this is the last premarket point (9:25)
+      const nextPoint = data[index + 1];
+      const isLastPremarket = isPreMarket && nextPoint && !nextPoint.isPreMarket;
+      
+      return {
+        ...point,
+        // Premarket values - show for premarket times AND the first market point (to connect)
+        expectedPremarket: isPreMarket || isFirstMarket ? point.expected : null,
+        actualPremarket: isPreMarket || isFirstMarket ? point.actual : null,
+        // Market hours values - show for market hours AND the last premarket point (to connect)
+        expectedMarket: !isPreMarket || isLastPremarket ? point.expected : null,
+        actualMarket: !isPreMarket || isLastPremarket ? point.actual : null,
+      };
+    });
+  }, [data, activeTab]);
+
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
       <h2 className="text-xl font-bold mb-4 text-gray-800">
         Volume Progression Throughout Trading Day
       </h2>
       <ResponsiveContainer width="100%" height={400}>
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
+        <LineChart data={activeTab === 'advanced' ? transformedData : data}>
+          <CartesianGrid strokeDasharray="3 3" vertical={true} />
           <XAxis
             dataKey="time"
-            label={{ value: 'Time (ET)', position: 'insideBottom', offset: -5 }}
             angle={-45}
             textAnchor="end"
-            height={80}
+            height={60}
+            tick={{ fontSize: 11 }}
+            tickLine={true}
+            interval={0}
             tickFormatter={(value, index) => {
               // Show labels only at 30-minute intervals in advanced mode
               if (activeTab === 'advanced') {
@@ -38,36 +65,80 @@ const VolumeChart = ({ data, activeTab }) => {
           />
           <YAxis
             tickFormatter={formatVolume}
-            label={{ value: 'Volume', angle: -90, position: 'insideLeft' }}
           />
           <Tooltip
             formatter={value => (value ? formatVolume(value) : 'N/A')}
             labelStyle={{ color: '#000' }}
           />
           <Legend />
-          <Line
-            type="monotone"
-            dataKey="expected"
-            stroke="#3b82f6"
-            strokeWidth={2}
-            name="Expected Volume (50-day avg)"
-            dot={false}
-            connectNulls
-          />
-          <Line
-            type="monotone"
-            dataKey="actual"
-            stroke="#10b981"
-            strokeWidth={2}
-            name={
-              activeTab === 'simple'
-                ? 'Actual Volume (projected)'
-                : 'Actual Volume'
-            }
-            dot={false}
-            strokeDasharray={activeTab === 'simple' ? '5 5' : '0'}
-            connectNulls
-          />
+          {activeTab === 'advanced' ? (
+            <>
+              {/* Premarket Expected - dotted blue line */}
+              <Line
+                type="monotone"
+                dataKey="expectedPremarket"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                name="Expected (Pre-market)"
+                dot={false}
+                connectNulls
+              />
+              {/* Market Hours Expected - solid blue line */}
+              <Line
+                type="monotone"
+                dataKey="expectedMarket"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                name="Expected Volume (50-day avg)"
+                dot={false}
+                connectNulls
+              />
+              {/* Premarket Actual - dotted green line */}
+              <Line
+                type="monotone"
+                dataKey="actualPremarket"
+                stroke="#10b981"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                name="Actual (Pre-market)"
+                dot={false}
+                connectNulls
+              />
+              {/* Market Hours Actual - solid green line */}
+              <Line
+                type="monotone"
+                dataKey="actualMarket"
+                stroke="#10b981"
+                strokeWidth={2}
+                name="Actual Volume"
+                dot={false}
+                connectNulls
+              />
+            </>
+          ) : (
+            <>
+              <Line
+                type="monotone"
+                dataKey="expected"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                name="Expected Volume (50-day avg)"
+                dot={false}
+                connectNulls
+              />
+              <Line
+                type="monotone"
+                dataKey="actual"
+                stroke="#10b981"
+                strokeWidth={2}
+                name="Actual Volume (projected)"
+                dot={false}
+                strokeDasharray="5 5"
+                connectNulls
+              />
+            </>
+          )}
         </LineChart>
       </ResponsiveContainer>
 
@@ -91,8 +162,8 @@ const VolumeChart = ({ data, activeTab }) => {
               patterns.
             </p>
             <p>
-              Gray columns represent pre-market (8:00-9:30 AM) and after-hours
-              (4:00-5:00 PM) trading periods.
+              <strong>Dotted lines</strong> represent pre-market (8:00-9:25 AM) trading.{' '}
+              <strong>Solid lines</strong> represent regular market hours (9:30 AM - 4:00 PM).
             </p>
           </>
         )}

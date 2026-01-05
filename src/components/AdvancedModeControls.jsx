@@ -1,6 +1,7 @@
 import React from 'react';
 import { Clock } from 'lucide-react';
-import { formatVolume } from '../utils/formatters';
+import { formatVolume, parseVolumeInput } from '../utils/formatters';
+import { PREMARKET_DISTRIBUTION } from '../utils/constants';
 
 const AdvancedModeControls = ({
   ticker,
@@ -44,6 +45,13 @@ const AdvancedModeControls = ({
   };
 
   const marketSession = getMarketSession();
+  
+  // Check if prerequisites are met for granular inputs
+  const hasValidTicker = ticker && ticker.trim().length > 0;
+  const hasValidAvgVolume = avgVolumeInput && parseVolumeInput(avgVolumeInput) > 0;
+  const hasValidDailyVolume = newDailyVolumeInput && parseVolumeInput(newDailyVolumeInput) > 0;
+  const prerequisitesMet = hasValidTicker && hasValidAvgVolume && hasValidDailyVolume;
+
   // Group time slots by hour for display
   const groupedSlots = {};
   timeSlots.forEach(slot => {
@@ -123,16 +131,17 @@ const AdvancedModeControls = ({
 
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
         <p className="text-sm text-amber-800">
-          <strong>Advanced Mode:</strong> Enter the <strong>individual volume</strong> for each
-          5-minute interval (not cumulative). The graph will automatically project the full-day
-          volume based on your inputs and smooth the projection. Leave blank to use expected values.
-          Pre-market (gray) and after-hours (gray) data is for reference only.
+          <strong>How to use Advanced Mode:</strong><br />
+          1. Enter the <strong>50-Day Avg Volume</strong> (e.g., &quot;50m&quot;)<br />
+          2. Enter the <strong>New Daily Volume</strong> - the current cumulative volume from your chart (e.g., &quot;10m&quot; at 11am)<br />
+          3. The graph will project actual volume (green) vs expected (blue)<br />
+          4. Optionally, use the time inputs below to override specific intervals with cumulative values
         </p>
       </div>
 
       <div className="overflow-x-auto">
-        <div className="inline-block min-w-full">
-          <div className="flex gap-2">
+        <div className="flex justify-center">
+          <div className="flex gap-4">
             {Object.keys(groupedSlots)
               .filter(hour => parseInt(hour) !== 17) // Remove 5pm column
               .sort((a, b) => {
@@ -183,10 +192,24 @@ const AdvancedModeControls = ({
                     </div>
                     <div className="flex flex-col gap-1 p-2 bg-white border border-gray-200 rounded-b-lg">
                       {groupedSlots[hour].map(slot => {
-                        const expected = getIndividualVolumeAtTime(slot.time);
-                        const placeholder = expected
-                          ? formatVolume(expected)
-                          : '';
+                        let placeholder = '';
+                        const avgVolume = parseVolumeInput(avgVolumeInput) || 0;
+                        
+                        if (slot.isPreMarket && avgVolume > 0) {
+                          // Use premarket distribution for placeholder
+                          const premarketPct = PREMARKET_DISTRIBUTION[slot.time];
+                          if (premarketPct) {
+                            // Calculate individual bar volume (difference from previous)
+                            const times = Object.keys(PREMARKET_DISTRIBUTION).sort();
+                            const idx = times.indexOf(slot.time);
+                            const prevPct = idx > 0 ? PREMARKET_DISTRIBUTION[times[idx - 1]] : 0;
+                            const individualPct = premarketPct - prevPct;
+                            placeholder = formatVolume(avgVolume * individualPct);
+                          }
+                        } else {
+                          const expected = getIndividualVolumeAtTime(slot.time);
+                          placeholder = expected ? formatVolume(expected) : '';
+                        }
 
                         return (
                           <div key={slot.time} className="flex flex-col">
@@ -200,10 +223,13 @@ const AdvancedModeControls = ({
                                 handleGranularChange(slot.time, e.target.value)
                               }
                               placeholder={placeholder}
+                              disabled={!prerequisitesMet}
                               className={`w-24 px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${
-                                slot.isPreMarket || slot.isAfterMarket
-                                  ? 'bg-gray-100 border-gray-300 text-gray-600'
-                                  : 'bg-white border-gray-300 text-gray-900'
+                                !prerequisitesMet
+                                  ? 'bg-gray-200 border-gray-300 text-gray-400 cursor-not-allowed'
+                                  : slot.isPreMarket || slot.isAfterMarket
+                                    ? 'bg-gray-100 border-gray-300 text-gray-600'
+                                    : 'bg-white border-gray-300 text-gray-900'
                               }`}
                             />
                           </div>
